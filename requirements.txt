@@ -3,5 +3,6 @@ pyarrow
 db-dtypes
 requests
 flask
+gunicorn
 google-cloud-secret-manager
 google-cloud-bigquery

@@ -1,0 +1,9 @@
+.git
+.gitignore
+.github/
+.vscode/
+.claude/
+__pycache__/
+*.pyc
+README.md
+big_query_schema.sql
