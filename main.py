@@ -351,17 +351,29 @@ def _df_to_schema_order(df, schema):
 
 
 def load_raw_to_bq(df):
-    """Append raw 5-min rows to raw_5min. Duplicates are possible on re-runs."""
-    table_id = f"{os.environ['GCP_PROJECT']}.{BQ_DATASET}.{BQ_TABLE_RAW}"
+    """Insert raw 5-min rows that don't already exist (idempotent on re-runs)."""
+    project = os.environ["GCP_PROJECT"]
+    temp_table = f"{project}.{BQ_DATASET}.temp_raw_{int(time.time())}"
+    table_id = f"{project}.{BQ_DATASET}.{BQ_TABLE_RAW}"
+
     job_config = bigquery.LoadJobConfig(
         schema=_RAW_SCHEMA,
-        write_disposition="WRITE_APPEND",
+        write_disposition="WRITE_TRUNCATE",
     )
     job = bq_client.load_table_from_dataframe(
-        _df_to_schema_order(df, _RAW_SCHEMA), table_id, job_config=job_config
+        _df_to_schema_order(df, _RAW_SCHEMA), temp_table, job_config=job_config
     )
     job.result()
-    logging.info(f"Loaded {len(df)} raw rows → {table_id}")
+
+    query = f"""
+    MERGE `{table_id}` T
+    USING `{temp_table}` S
+    ON T.timestamp = S.timestamp AND T.station_id = S.station_id
+    WHEN NOT MATCHED THEN INSERT ROW
+    """
+    bq_client.query(query).result()
+    bq_client.delete_table(temp_table, not_found_ok=True)
+    logging.info(f"Upserted {len(df)} raw rows → {table_id}")
 
 
 def upsert_hourly_to_bq(df):
