@@ -23,31 +23,6 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
-      - name: Debug auth
-        run: |
-          echo "=== Active accounts ==="
-          gcloud auth list
-
-          echo "=== gcloud config ==="
-          gcloud config list
-
-          echo "=== Verify project access ==="
-          gcloud projects describe all-we-are-master-database
-
-          echo "=== Enabled APIs (Cloud Build + Cloud Run) ==="
-          gcloud services list --enabled --project=all-we-are-master-database \
-            --filter="name:(cloudbuild OR run.googleapis)" --format="table(name,state)"
-
-          echo "=== Runtime SA exists? ==="
-          gcloud iam service-accounts describe \
-            inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com \
-            --project=all-we-are-master-database
-
-          echo "=== Cloud Build SA IAM on runtime SA ==="
-          gcloud iam service-accounts get-iam-policy \
-            inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com \
-            --project=all-we-are-master-database
-
       - name: Deploy to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
