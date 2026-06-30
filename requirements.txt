@@ -1,0 +1,7 @@
+pandas
+pyarrow
+db-dtypes
+requests
+flask
+google-cloud-secret-manager
+google-cloud-bigquery
