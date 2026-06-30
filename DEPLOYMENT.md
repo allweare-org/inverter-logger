@@ -21,7 +21,7 @@ Run these steps once when setting up a new environment from scratch.
 - `roles/secretmanager.secretAccessor` — Secret Manager Secret Accessor
 - `roles/bigquery.dataEditor` — BigQuery Data Editor
 - `roles/bigquery.jobUser` — BigQuery Job User
-- `roles/run.invoker` — Cloud Run Invoker *(granted post first deploy; required for Cloud Scheduler OIDC auth)*
+- `roles/run.invoker` — Cloud Run Invoker *(granted post first deploy at project level; required for Cloud Scheduler OIDC auth)*
 
 ## Deploying a New Service
 
@@ -45,6 +45,8 @@ gcloud projects describe all-we-are-master-database --format="value(projectNumbe
 ```
 
 Replace `<PROJECT_NUMBER>` in all commands below with that value.
+
+> **PowerShell note:** Commands below use `\` for line continuation (bash syntax). In PowerShell, either remove the `\` and run each command as a single line, or replace `\` with a backtick `` ` ``.
 
 ## 1. Enable Required APIs
 
@@ -180,12 +182,9 @@ gcloud run services describe inverter-logger \
   --project=all-we-are-master-database \
   --format="value(status.url)"
 
-# Allow the runtime SA to invoke the service (required for Cloud Scheduler OIDC auth)
-gcloud run services add-iam-policy-binding inverter-logger \
-  --region=us-east4 \
-  --project=all-we-are-master-database \
-  --member="serviceAccount:inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com" \
-  --role="roles/run.invoker"
+# Allow the runtime SA to invoke Cloud Run services (required for Cloud Scheduler OIDC auth).
+# Grant at project level — service-level binding alone was not sufficient.
+gcloud projects add-iam-policy-binding all-we-are-master-database --member="serviceAccount:inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com" --role="roles/run.invoker"
 ```
 
 ## 7. Cloud Scheduler
@@ -193,14 +192,5 @@ gcloud run services add-iam-policy-binding inverter-logger \
 Replace `<SERVICE_URL>` with the URL from Step 6:
 
 ```bash
-gcloud scheduler jobs create http inverter-logger-daily \
-  --project=all-we-are-master-database \
-  --location=us-east1 \
-  --schedule="0 3 * * *" \
-  --time-zone="America/New_York" \
-  --uri="<SERVICE_URL>/" \
-  --message-body='{"backfill_days": 2}' \
-  --http-method=POST \
-  --headers="Content-Type=application/json" \
-  --oidc-service-account-email="inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com"
+gcloud scheduler jobs create http inverter-logger-daily --project=all-we-are-master-database --location=us-east1 --schedule="0 3 * * *" --time-zone="America/New_York" --uri="<SERVICE_URL>/" --message-body='{"backfill_days":2}' --http-method=POST --headers="Content-Type=application/json" --oidc-service-account-email="inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com"
 ```
