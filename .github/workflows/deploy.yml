@@ -29,10 +29,9 @@ jobs:
           service: inverter-logger
           region: us-east4
           source: .
-          # Runtime service account (Secret Manager + BigQuery access)
-          service_account: inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com
           flags: >-
             --no-allow-unauthenticated
+            --service-account=inverter-logger-runtime@all-we-are-master-database.iam.gserviceaccount.com
             --memory=512Mi
             --timeout=540
             --max-instances=1
