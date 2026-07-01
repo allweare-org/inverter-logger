@@ -6,3 +6,4 @@ flask
 gunicorn
 google-cloud-secret-manager
 google-cloud-bigquery
+pandas-gbq>=0.26.1

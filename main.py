@@ -25,6 +25,7 @@ BQ_TABLE_RAW = "raw_5min"
 BQ_TABLE_HOURLY = "hourly"
 
 MAX_WORKERS = 5
+DATA_SOURCE = "deye"
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -81,6 +82,7 @@ RAW_COLUMNS = [
     "timestamp",
     "station_id",
     "station_name",
+    "data_source",
     # renamed columns
     "Production_kWh",
     "Consumption_kWh",
@@ -121,6 +123,7 @@ HOURLY_COLUMNS = [
     "timestamp",
     "station_id",
     "station_name",
+    "data_source",
     "Production_kWh",
     "Consumption_kWh",
     "Grid_kWh",
@@ -231,6 +234,7 @@ def process_station_data(raw_data, station):
     )
     df["station_name"] = station["name"]
     df["station_id"] = str(station["id"])  # cast to string to match BQ STRING schema
+    df["data_source"] = DATA_SOURCE
 
     raw_df = df.rename(columns=COLUMN_RENAMES).copy()
 
@@ -278,6 +282,7 @@ _RAW_SCHEMA = [
     bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("station_id", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("station_name", "STRING"),
+    bigquery.SchemaField("data_source", "STRING"),
     # renamed columns
     bigquery.SchemaField("Production_kWh", "FLOAT64"),
     bigquery.SchemaField("Consumption_kWh", "FLOAT64"),
@@ -317,6 +322,7 @@ _HOURLY_SCHEMA = [
     bigquery.SchemaField("timestamp", "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("station_id", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("station_name", "STRING"),
+    bigquery.SchemaField("data_source", "STRING"),
     bigquery.SchemaField("Production_kWh", "FLOAT64"),
     bigquery.SchemaField("Consumption_kWh", "FLOAT64"),
     bigquery.SchemaField("Grid_kWh", "FLOAT64"),
@@ -368,7 +374,7 @@ def load_raw_to_bq(df):
     query = f"""
     MERGE `{table_id}` T
     USING `{temp_table}` S
-    ON T.timestamp = S.timestamp AND T.station_id = S.station_id
+    ON T.timestamp = S.timestamp AND T.station_id = S.station_id AND T.data_source = S.data_source
     WHEN NOT MATCHED THEN INSERT ROW
     """
     bq_client.query(query).result()
@@ -394,14 +400,15 @@ def upsert_hourly_to_bq(df):
     query = f"""
     MERGE `{table_id}` T
     USING `{temp_table}` S
-    ON T.timestamp = S.timestamp AND T.station_id = S.station_id
+    ON T.timestamp = S.timestamp AND T.station_id = S.station_id AND T.data_source = S.data_source
     WHEN MATCHED THEN UPDATE SET
         Production_kWh  = S.Production_kWh,
         Consumption_kWh = S.Consumption_kWh,
         Grid_kWh        = S.Grid_kWh,
         Battery_kWh     = S.Battery_kWh,
         SOC             = S.SOC,
-        station_name    = S.station_name
+        station_name    = S.station_name,
+        data_source     = S.data_source
     WHEN NOT MATCHED THEN INSERT ROW
     """
     bq_client.query(query).result()
@@ -423,8 +430,8 @@ def _derive_hourly(raw_df):
     agg["SOC"] = "mean"
 
     results = []
-    for (station_id, station_name), group in raw_df.groupby(
-        ["station_id", "station_name"]
+    for (station_id, station_name, data_source), group in raw_df.groupby(
+        ["station_id", "station_name", "data_source"]
     ):
         hourly = (
             group.set_index("timestamp")[power_cols + ["SOC"]]
@@ -436,6 +443,7 @@ def _derive_hourly(raw_df):
         hourly["SOC"] = hourly["SOC"].round(0)
         hourly["station_id"] = station_id
         hourly["station_name"] = station_name
+        hourly["data_source"] = data_source
         results.append(hourly)
 
     return pd.concat(results, ignore_index=True)
@@ -471,7 +479,7 @@ def run_pipeline(backfill_days=1):
     # Deduplicate 5-min data — adjacent day API responses can overlap at boundaries,
     # producing the same (timestamp, station_id) in two day chunks.
     raw_df = pd.concat(raw_all, ignore_index=True).drop_duplicates(
-        subset=["timestamp", "station_id"]
+        subset=["timestamp", "station_id", "data_source"]
     )
     # Derive hourly from clean deduplicated raw — guarantees no duplicate MERGE keys.
     hourly_df = _derive_hourly(raw_df)
