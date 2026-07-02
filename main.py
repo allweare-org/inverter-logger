@@ -68,10 +68,10 @@ COLUMNS_STATION_HISTORY = [
 
 # Column renames applied to both raw and hourly tables
 COLUMN_RENAMES = {
-    "generationPower": "Production_kWh",
-    "consumptionPower": "Consumption_kWh",
-    "gridPower": "Grid_kWh",
-    "batteryPower": "Battery_kWh",
+    "generationPower": "Production_kW",
+    "consumptionPower": "Consumption_kW",
+    "gridPower": "Grid_kW",
+    "batteryPower": "Battery_kW",
     "batterySOC": "SOC",
 }
 
@@ -84,10 +84,10 @@ RAW_COLUMNS = [
     "station_name",
     "data_source",
     # renamed columns
-    "Production_kWh",
-    "Consumption_kWh",
-    "Grid_kWh",
-    "Battery_kWh",
+    "Production_kW",
+    "Consumption_kW",
+    "Grid_kW",
+    "Battery_kW",
     "SOC",
     # active API fields (currently collected)
     "dischargePower",
@@ -124,10 +124,10 @@ HOURLY_COLUMNS = [
     "station_id",
     "station_name",
     "data_source",
-    "Production_kWh",
-    "Consumption_kWh",
-    "Grid_kWh",
-    "Battery_kWh",
+    "Production_kW",
+    "Consumption_kW",
+    "Grid_kW",
+    "Battery_kW",
     "SOC",
 ]
 
@@ -245,10 +245,10 @@ def process_station_data(raw_data, station):
         [
             "station_name",
             "station_id",
-            "Production_kWh",
-            "Consumption_kWh",
-            "Grid_kWh",
-            "Battery_kWh",
+            "Production_kW",
+            "Consumption_kW",
+            "Grid_kW",
+            "Battery_kW",
             "SOC",
         ]
     ]
@@ -284,10 +284,10 @@ _RAW_SCHEMA = [
     bigquery.SchemaField("station_name", "STRING"),
     bigquery.SchemaField("data_source", "STRING"),
     # renamed columns
-    bigquery.SchemaField("Production_kWh", "FLOAT64"),
-    bigquery.SchemaField("Consumption_kWh", "FLOAT64"),
-    bigquery.SchemaField("Grid_kWh", "FLOAT64"),
-    bigquery.SchemaField("Battery_kWh", "FLOAT64"),
+    bigquery.SchemaField("Production_kW", "FLOAT64"),
+    bigquery.SchemaField("Consumption_kW", "FLOAT64"),
+    bigquery.SchemaField("Grid_kW", "FLOAT64"),
+    bigquery.SchemaField("Battery_kW", "FLOAT64"),
     bigquery.SchemaField("SOC", "FLOAT64"),
     # active API fields
     bigquery.SchemaField("dischargePower", "FLOAT64"),
@@ -323,10 +323,10 @@ _HOURLY_SCHEMA = [
     bigquery.SchemaField("station_id", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("station_name", "STRING"),
     bigquery.SchemaField("data_source", "STRING"),
-    bigquery.SchemaField("Production_kWh", "FLOAT64"),
-    bigquery.SchemaField("Consumption_kWh", "FLOAT64"),
-    bigquery.SchemaField("Grid_kWh", "FLOAT64"),
-    bigquery.SchemaField("Battery_kWh", "FLOAT64"),
+    bigquery.SchemaField("Production_kW", "FLOAT64"),
+    bigquery.SchemaField("Consumption_kW", "FLOAT64"),
+    bigquery.SchemaField("Grid_kW", "FLOAT64"),
+    bigquery.SchemaField("Battery_kW", "FLOAT64"),
     bigquery.SchemaField("SOC", "FLOAT64"),
 ]
 
@@ -402,13 +402,13 @@ def upsert_hourly_to_bq(df):
     USING `{temp_table}` S
     ON T.timestamp = S.timestamp AND T.station_id = S.station_id AND T.data_source = S.data_source
     WHEN MATCHED THEN UPDATE SET
-        Production_kWh  = S.Production_kWh,
-        Consumption_kWh = S.Consumption_kWh,
-        Grid_kWh        = S.Grid_kWh,
-        Battery_kWh     = S.Battery_kWh,
-        SOC             = S.SOC,
-        station_name    = S.station_name,
-        data_source     = S.data_source
+        Production_kW  = S.Production_kW,
+        Consumption_kW = S.Consumption_kW,
+        Grid_kW        = S.Grid_kW,
+        Battery_kW     = S.Battery_kW,
+        SOC            = S.SOC,
+        station_name   = S.station_name,
+        data_source    = S.data_source
     WHEN NOT MATCHED THEN INSERT ROW
     """
     bq_client.query(query).result()
@@ -425,8 +425,8 @@ def _derive_hourly(raw_df):
     Grouping per station then resampling guarantees exactly one row per
     (timestamp, station_id) — a hard requirement for the MERGE upsert.
     """
-    power_cols = ["Production_kWh", "Consumption_kWh", "Grid_kWh", "Battery_kWh"]
-    agg = {c: "sum" for c in power_cols}
+    kw_cols = ["Production_kW", "Consumption_kW", "Grid_kW", "Battery_kW"]
+    agg = {c: "mean" for c in kw_cols}
     agg["SOC"] = "mean"
 
     results = []
@@ -434,12 +434,12 @@ def _derive_hourly(raw_df):
         ["station_id", "station_name", "data_source"]
     ):
         hourly = (
-            group.set_index("timestamp")[power_cols + ["SOC"]]
+            group.set_index("timestamp")[kw_cols + ["SOC"]]
             .resample("h")
             .agg(agg)
             .reset_index()
         )
-        hourly[power_cols] = (hourly[power_cols] / 1000).round(1)
+        hourly[kw_cols] = (hourly[kw_cols] / 1000).round(1)
         hourly["SOC"] = hourly["SOC"].round(0)
         hourly["station_id"] = station_id
         hourly["station_name"] = station_name
