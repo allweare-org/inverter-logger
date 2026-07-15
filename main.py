@@ -357,7 +357,7 @@ def _df_to_schema_order(df, schema):
 
 
 def load_raw_to_bq(df):
-    """Insert raw 5-min rows that don't already exist (idempotent on re-runs)."""
+    """Upsert raw 5-min rows — insert new, overwrite existing (catches API zero corrections)."""
     project = os.environ["GCP_PROJECT"]
     temp_table = f"{project}.{BQ_DATASET}.temp_raw_{int(time.time())}"
     table_id = f"{project}.{BQ_DATASET}.{BQ_TABLE_RAW}"
@@ -371,10 +371,16 @@ def load_raw_to_bq(df):
     )
     job.result()
 
+    key_cols = {"timestamp", "station_id", "data_source"}
+    update_set = ",\n        ".join(
+        f"{f.name} = S.{f.name}" for f in _RAW_SCHEMA if f.name not in key_cols
+    )
     query = f"""
     MERGE `{table_id}` T
     USING `{temp_table}` S
     ON T.timestamp = S.timestamp AND T.station_id = S.station_id AND T.data_source = S.data_source
+    WHEN MATCHED THEN UPDATE SET
+        {update_set}
     WHEN NOT MATCHED THEN INSERT ROW
     """
     bq_client.query(query).result()
